@@ -30,6 +30,9 @@ type Parser struct {
 	// TypeDefinitions is a map that stores [package name][type name][*ast.TypeSpec]
 	TypeDefinitions map[string]map[string]*ast.TypeSpec
 
+	// InterfaceDefinitions is a map that stores [fieldname]=>DefinitionsName
+	InterfaceDefinitions map[string]string
+
 	//registerTypes is a map that stores [refTypeName][*ast.TypeSpec]
 	registerTypes map[string]*ast.TypeSpec
 
@@ -53,9 +56,10 @@ func New() *Parser {
 				Definitions: make(map[string]spec.Schema),
 			},
 		},
-		files:           make(map[string]*ast.File),
-		TypeDefinitions: make(map[string]map[string]*ast.TypeSpec),
-		registerTypes:   make(map[string]*ast.TypeSpec),
+		files:                make(map[string]*ast.File),
+		TypeDefinitions:      make(map[string]map[string]*ast.TypeSpec),
+		registerTypes:        make(map[string]*ast.TypeSpec),
+		InterfaceDefinitions: make(map[string]string),
 	}
 	return parser
 }
@@ -479,10 +483,26 @@ func (parser *Parser) parseStruct(pkgName string, field *ast.Field) (properties 
 		if structField.isRequired {
 			required = append(required, structField.name)
 		}
-		properties[structField.name] = spec.Schema{
-			SchemaProps:        spec.SchemaProps{Type: []string{structField.schemaType}, Format: structField.formatType, Required: required},
-			SwaggerSchemaProps: spec.SwaggerSchemaProps{Example: structField.exampleValue},
+
+		//FIXME:
+		if v, ok := parser.InterfaceDefinitions[structField.name]; ok {
+			properties[structField.name] = spec.Schema{
+				SchemaProps: spec.SchemaProps{Items: &spec.SchemaOrArray{
+					Schema: &spec.Schema{
+						SchemaProps: spec.SchemaProps{
+							Ref: spec.Ref{Ref: jsonreference.MustCreateRef("#/definitions/" + v)},
+						},
+					},
+				}, Type: []string{"array"}, Format: structField.formatType, Required: required},
+				SwaggerSchemaProps: spec.SwaggerSchemaProps{Example: structField.exampleValue},
+			}
+		} else {
+			properties[structField.name] = spec.Schema{
+				SchemaProps:        spec.SchemaProps{Type: []string{structField.schemaType}, Format: structField.formatType, Required: required},
+				SwaggerSchemaProps: spec.SwaggerSchemaProps{Example: structField.exampleValue},
+			}
 		}
+
 		nestStruct, ok := field.Type.(*ast.StructType)
 		if ok {
 			props := map[string]spec.Schema{}

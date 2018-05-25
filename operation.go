@@ -69,9 +69,7 @@ func (operation *Operation) ParseComment(comment string) error {
 				var errs []string
 				errs = append(errs, err.Error())
 				errs = append(errs, errWhenEmpty.Error())
-
 				return fmt.Errorf(strings.Join(errs, "\n"))
-
 			}
 		}
 
@@ -390,18 +388,32 @@ func (operation *Operation) ParseSecurityComment(commentLine string) error {
 
 // ParseResponseComment parses comment for gived `response` comment string.
 func (operation *Operation) ParseResponseComment(commentLine string) error {
-	re := regexp.MustCompile(`([\d]+)[\s]+([\w\{\}]+)[\s]+([\w\-\.\/]+)[^"]*(.*)?`)
+
+	re := regexp.MustCompile(`([\d]+)[\s]+([\w\{\}]+)[\s]+([\w\-\.\/]+)[\s]+({.*}+)[^"]*(.*)?`)
 	var matches []string
 
-	if matches = re.FindStringSubmatch(commentLine); len(matches) != 5 {
+	if matches = re.FindStringSubmatch(commentLine); len(matches) < 5 {
 		return fmt.Errorf("can not parse response comment \"%s\"", commentLine)
 	}
 
+	//handle interface type in struct field
+	customTypeHandler := strings.Trim(matches[4], "{}")
+	customFieldSplit := strings.Split(customTypeHandler, ":")
+	if len(customFieldSplit) == 2 {
+		fieldname := customFieldSplit[0]
+		definname := customFieldSplit[1]
+		if err := operation.createDefinitions(definname); err != nil {
+			return err
+		}
+		operation.parser.InterfaceDefinitions[strings.ToLower(fieldname)] = definname
+	}
+
+	//...
 	response := spec.Response{}
 
 	code, _ := strconv.Atoi(matches[1])
 
-	responseDescription := strings.Trim(matches[4], "\"")
+	responseDescription := strings.Trim(matches[5], "\"") //6
 	if responseDescription == "" {
 		responseDescription = http.StatusText(code)
 	}
@@ -411,16 +423,8 @@ func (operation *Operation) ParseResponseComment(commentLine string) error {
 	refType := matches[3]
 
 	if operation.parser != nil { // checking refType has existing in 'TypeDefinitions'
-		refSplit := strings.Split(refType, ".")
-		if len(refSplit) == 2 {
-			pkgName := refSplit[0]
-			typeName := refSplit[1]
-			if typeSpec, ok := operation.parser.TypeDefinitions[pkgName][typeName]; ok {
-				operation.parser.registerTypes[refType] = typeSpec
-			} else {
-				return fmt.Errorf("can not find ref type:\"%s\"", refType)
-			}
-
+		if err := operation.createDefinitions(refType); err != nil {
+			return err
 		}
 	}
 
@@ -442,7 +446,6 @@ func (operation *Operation) ParseResponseComment(commentLine string) error {
 				},
 			},
 		}
-
 	}
 
 	if operation.Responses == nil {
@@ -458,11 +461,25 @@ func (operation *Operation) ParseResponseComment(commentLine string) error {
 	return nil
 }
 
+//FIXME;
+func (operation *Operation) createDefinitions(refType string) error {
+	refSplit := strings.Split(refType, ".")
+	if len(refSplit) == 2 {
+		pkgName := refSplit[0]
+		typeName := refSplit[1]
+		if typeSpec, ok := operation.parser.TypeDefinitions[pkgName][typeName]; ok {
+			operation.parser.registerTypes[refType] = typeSpec
+		} else {
+			return fmt.Errorf("can not find ref type:\"%s\"", refType)
+		}
+	}
+	return nil
+}
+
 // ParseEmptyResponseComment TODO: NEEDS COMMENT INFO
 func (operation *Operation) ParseEmptyResponseComment(commentLine string) error {
 	re := regexp.MustCompile(`([\d]+)[\s]+"(.*)"`)
 	var matches []string
-
 	if matches = re.FindStringSubmatch(commentLine); len(matches) != 3 {
 		return fmt.Errorf("can not parse empty response comment \"%s\"", commentLine)
 	}
