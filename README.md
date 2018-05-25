@@ -203,7 +203,7 @@ func (c *Controller) ShowAccount(ctx *gin.Context) {
 // @Accept  json
 // @Produce  json
 // @Param q query string false "name search by q"
-// @Success 200 {array} model.Account
+// @Success 200 {array} model.Paginate {Result:model.accounts}
 // @Failure 400 {object} httputil.HTTPError
 // @Failure 404 {object} httputil.HTTPError
 // @Failure 500 {object} httputil.HTTPError
